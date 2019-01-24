@@ -48,6 +48,15 @@ struct wireless_device {
 	struct uloop_timeout script_check;
 
 	struct ubus_request_data *kill_request;
+	//wpa-------------------------------
+	struct netifd_process wpa_script_task;
+	struct netifd_process wpa_script_task;
+	struct uloop_timeout wpa_timeout;
+	struct uloop_timeout wpa_poll;
+
+	struct list_head wpa_script_proc;
+	struct uloop_fd wpa_script_proc_fd;
+	struct uloop_timeout wpa_script_check;
 
 	struct blob_attr *prev_config;
 	struct blob_attr *config;
@@ -56,11 +65,20 @@ struct wireless_device {
 	bool config_autostart;
 	bool autostart;
 	bool disabled;
+	//wpa----------------------------
+	bool wpa_config_autostart;
+	bool wpa_autostart;
+	bool wpa_disabled;
 
 	enum interface_state state;
 	enum interface_config_state config_state;
 	bool cancel;
 	int retry;
+	//wpa---------------------------
+	enum interface_state wpa_state;
+	enum interface_config_state wpa_config_state;
+	bool wpa_cancel;
+	int wpa_retry;
 
 	int vif_idx;
 };
@@ -100,7 +118,8 @@ enum wireless_config {
 	WDEV_TEARDOWN,
 	WDEV_SETUP,
 	WDEV_RELOAD,
-	WDEV_REP,
+	WDEV_REPDOWN,
+	WDEV_REPUP,
 };
 
 void wireless_device_create(struct wireless_driver *drv, const char *name, struct blob_attr *data);
