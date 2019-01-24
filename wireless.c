@@ -147,6 +147,17 @@ wireless_complete_kill_request(struct wireless_device *wdev)
 }
 
 static void
+wireless_complete_kill_request2(struct wireless_device *wdev)
+{
+	if (!wdev->wpa_kill_request)
+	      return;
+
+	ubus_complete_deferred_request(ubus_ctx, wdev->wpa_kill_request, 0);
+	free(wdev->wpa_kill_request);
+	wdev->wpa_kill_request = NULL;
+}
+
+static void
 wireless_process_free(struct wireless_device *wdev, struct wireless_process *proc)
 {
 	D(WIRELESS, "Wireless device '%s' free pid %d\n", wdev->name, proc->pid);
@@ -195,15 +206,18 @@ wireless_process_kill_all(struct wireless_device *wdev, int signal, bool free)
 	struct wireless_process *proc, *tmp;
 
 	list_for_each_entry_safe(proc, tmp, &wdev->script_proc, list) {
-		bool check = wireless_process_check(proc);
+		if (proc->mode)
+		{
+			bool check = wireless_process_check(proc);
 
-		if (check) {
-			D(WIRELESS, "Wireless device '%s' kill pid %d\n", wdev->name, proc->pid);
-			kill(proc->pid, signal);
+			if (check) {
+				D(WIRELESS, "Wireless device '%s' kill pid %d\n", wdev->name, proc->pid);
+				kill(proc->pid, signal);
+			}
+
+			if (free || !check)
+				wireless_process_free(wdev, proc);
 		}
-
-		if (free || !check)
-			wireless_process_free(wdev, proc);
 	}
 
 	if (free)
@@ -216,19 +230,33 @@ wireless_process_kill_all2(struct wireless_device *wdev, int signal, bool free)
 	struct wireless_process *proc, *tmp;
 
 	list_for_each_entry_safe(proc, tmp, &wdev->wpa_script_proc, list) {
-		bool check = wireless_process_check(proc);
+		if (!proc->mode)
+		{
+			bool check = wireless_process_check(proc);
 
-		if (check) {
-			D(WIRELESS, "Wireless device '%s' kill pid %d\n", wdev->name, proc->pid);
-			kill(proc->pid, signal);
+			if (check) {
+				D(WIRELESS, "Wireless device wpa '%s' kill pid %d\n", wdev->name, proc->pid);
+				kill(proc->pid, signal);
+			}
+
+			if (free || !check)
+				wireless_process_free2(wdev, proc);
 		}
-
-		if (free || !check)
-		      wireless_process_free2(wdev, proc);
 	}
 
 	if (free)
 	      wireless_close_script_proc_fd2(wdev);
+}
+
+static void
+wireless_device_mark_free(struct wireless_device *wdev)
+{
+	if (wdev->state == IFS_DOWN && wdev->wpa_state == IFS_DOWN)
+	{
+		free(wdev->data);
+		wdev->data = NULL;
+	}
+
 }
 
 static void
@@ -240,12 +268,16 @@ wireless_device_free_state(struct wireless_device *wdev)
 
 	uloop_timeout_cancel(&wdev->timeout);
 	wireless_complete_kill_request(wdev);
-	free(wdev->data);
-	wdev->data = NULL;
+	wireless_device_mark_free(wdev);
+	//free(wdev->data);
+	//wdev->data = NULL;
 	vlist_for_each_element(&wdev->interfaces, vif, node) {
-		free(vif->data);
-		vif->data = NULL;
-		vif->ifname = NULL;
+		if (vif->ap_mode)
+		{
+			free(vif->data);
+			vif->data = NULL;
+			vif->ifname = NULL;
+		}
 	}
 }
 
@@ -258,6 +290,7 @@ wireless_device_free_state2(struct wireless_device *wdev)
 
 	uloop_timeout_cancel(&wdev->timeout);
 	wireless_complete_kill_request2(wdev);
+	wireless_device_mark_free(wdev);
 	//free(wdev->data);
 	//wdev->data = NULL;
 	vlist_for_each_element(&wdev->interfaces, vif, node) {
@@ -564,8 +597,11 @@ void
 wireless_device_set_up(struct wireless_device *wdev)
 {
 	wdev->retry = WIRELESS_SETUP_RETRY;
+	wdev->wpa_retry = WIRELESS_SETUP_RETRY;
 	wdev->autostart = true;
+	wdev->wpa_autostart = true;
 	__wireless_device_set_up(wdev);
+	__wireless_device_set_up2(wdev);
 }
 
 static void
@@ -678,8 +714,11 @@ void
 wireless_device_set_down(struct wireless_device *wdev)
 {
 	wdev->autostart = false;
+	wdev->wpa_autostart =false;
 	__wireless_device_set_down(wdev);
+	__wireless_device_set_down2(wdev);
 }
+
 /*
 static void
 iface_set_config_state(struct wireless_interface *iface, enum interface_config_state s)
@@ -1197,7 +1236,7 @@ wireless_interface_set_data(struct wireless_interface *vif)
 }
 
 static int
-wireless_device_add_process(struct wireless_device *wdev, struct blob_attr *data)
+wireless_device_add_process(struct wireless_device *wdev, struct blob_attr *data, bool ap)
 {
 	enum {
 		PROC_ATTR_PID,
@@ -1231,12 +1270,13 @@ wireless_device_add_process(struct wireless_device *wdev, struct blob_attr *data
 
 	proc->pid = pid;
 	proc->exe = strcpy(name, blobmsg_data(tb[PROC_ATTR_EXE]));
+	proc->mode = ap;
 
 	if (tb[PROC_ATTR_REQUIRED])
 		proc->required = blobmsg_get_bool(tb[PROC_ATTR_REQUIRED]);
 
 	D(WIRELESS, "Wireless device '%s' add pid %d\n", wdev->name, proc->pid);
-	if (wdev->config_state != IFC_REP) {
+	if (ap) {
 		list_add(&proc->list, &wdev->script_proc);
 		uloop_timeout_set(&wdev->script_check, 0);
 	} else {
@@ -1316,8 +1356,9 @@ enum {
 	NOTIFY_CMD_PROCESS_KILL_ALL = 3,
 	NOTIFY_CMD_SET_RETRY = 4,
 	NOTIFY_CMD_WPAUP = 5,
-	NOTIFY_CMD_PROCESS_KILL_WPA = 6,
-	NOTIFY_CMD_SET_WPARETRY = 7,
+	NOTIFY_CMD_PROCESS_ADDWPA = 6,
+	NOTIFY_CMD_PROCESS_KILL_WPA = 7,
+	NOTIFY_CMD_SET_WPARETRY = 8,
 };
 
 int
@@ -1387,7 +1428,9 @@ wireless_device_notify(struct wireless_device *wdev, struct blob_attr *data,
 			wireless_interface_set_data(vif);
 		break;
 	case NOTIFY_CMD_PROCESS_ADD:
-		return wireless_device_add_process(wdev, cur);
+		return wireless_device_add_process(wdev, cur, true);
+	case NOTIFY_CMD_PROCESS_ADDWPA:
+		return wireless_device_add_process(wdev, cur, false);
 	case NOTIFY_CMD_PROCESS_KILL_ALL:
 		return wireless_device_process_kill_all(wdev, cur, req, true);
 	case NOTIFY_CMD_PROCESS_KILL_WPA:
