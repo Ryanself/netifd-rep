@@ -81,6 +81,8 @@ struct wireless_device {
 	int wpa_retry;
 
 	int vif_idx;
+	bool hostap_remove;
+	bool wpa_remove;
 };
 
 struct wireless_interface {

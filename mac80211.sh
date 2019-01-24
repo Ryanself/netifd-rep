@@ -826,7 +826,7 @@ drv_mac80211_repup() {
 	# reppeater get macaddr from phy, so we need get phy first.
 	find_phy || {
 		echo "Could not find PHY for device '$1'"
-		wireless_set_wparetry 0
+		wireless_set_retry_wpas 0
 		return 1
 	}
 
@@ -843,11 +843,11 @@ drv_mac80211_repup() {
 
 	for_each_interface "sta wds-sta" mac80211_prepare_vif
 	for_each_interface "sta wds-sta" mac80211_setup_vif
-	wireless_set_wpaup
+	wireless_set_up_wpas
 }
 
 drv_mac80211_repdown() {
-	wireless_process_kill_rep
+	wireless_process_kill_wpas
 
 	json_select data
 	json_get_vars phy
