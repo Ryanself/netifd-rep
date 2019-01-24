@@ -220,6 +220,10 @@ _wdev_wrapper \
 	wireless_add_process \
 	wireless_process_kill_all \
 	wireless_set_retry \
+	wireless_set_up_wpas \
+	wireless_add_process_wpas \
+	wireless_process_kill_wpas \
+	wireless_set_retry_wpas
 
 wireless_vif_parse_encryption() {
 	json_get_vars encryption
@@ -355,7 +359,7 @@ init_wireless_driver() {
 				json_dump
 			}
 		;;
-		setup|teardown|reload|wpaupdate|repeater)
+		setup|teardown|reload|repup|repdown)
 			interface="$1"; shift
 			data="$1"; shift
 			case "$cmd" in

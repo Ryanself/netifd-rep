@@ -364,7 +364,7 @@ static void
 wireless_device_run_handler(struct wireless_device *wdev, bool ap,
 			enum wireless_config s)
 {
-	const char *argv[7];
+	const char *argv[6];
 	const char *action;
 	bool up;
 	int i = 0;
@@ -395,8 +395,8 @@ wireless_device_run_handler(struct wireless_device *wdev, bool ap,
 			up = false;
 			break;
 		default:
-		//	action = "setup";
-		//	up = true;
+		action = "setup";
+		up = true;
 			break;
 	}
 
@@ -475,6 +475,22 @@ __wireless_device_set_up2(struct wireless_device *wdev)
 	wireless_device_run_handler(wdev, false, WDEV_REPUP);
 
 }
+
+static void
+wireless_device_set_up1(struct wireless_device *wdev)
+{
+	wdev->retry = WIRELESS_SETUP_RETRY;
+	wdev->autostart = true;
+}
+
+static void
+wireless_device_set_up2(struct wireless_device *wdev)
+{
+	wdev->wpa_retry = WIRELESS_SETUP_RETRY;
+	wdev->wpa_autostart = true;
+}
+
+
 static void
 wireless_device_free(struct wireless_device *wdev)
 {
@@ -596,19 +612,6 @@ wireless_device_setup_timeout2(struct uloop_timeout *wpa_timeout)
 	netifd_kill_process(&wdev->wpa_script_task);
 	wdev->script_task.cb(&wdev->wpa_script_task, -1);
 	wireless_device_mark_down2(wdev);
-}
-static void
-wireless_device_set_up1(struct wireless_device *wdev)
-{
-	wdev->retry = WIRELESS_SETUP_RETRY;
-	wdev->autostart = true;
-}
-
-static void
-wireless_device_set_up2(struct wireless_device *wdev)
-{
-	wdev->wpa_retry = WIRELESS_SETUP_RETRY;
-	wdev->wpa_autostart = true;
 }
 
 void
