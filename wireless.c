@@ -158,6 +158,17 @@ wireless_process_free(struct wireless_device *wdev, struct wireless_process *pro
 }
 
 static void
+wireless_process_free2(struct wireless_device *wdev, struct wireless_process *proc)
+{
+	D(WIRELESS, "Wireless device '%s' free pid %d\n", wdev->name, proc->pid);
+	list_del(&proc->list);
+	free(proc);
+
+	if (list_empty(&wdev->wpa_script_proc))
+	      wireless_complete_kill_request2(wdev);
+}
+
+static void
 wireless_close_script_proc_fd(struct wireless_device *wdev)
 {
 	if (wdev->script_proc_fd.fd < 0)
@@ -165,6 +176,17 @@ wireless_close_script_proc_fd(struct wireless_device *wdev)
 	uloop_fd_delete(&wdev->script_proc_fd);
 	close(wdev->script_proc_fd.fd);
 	wdev->script_proc_fd.fd = -1;
+}
+
+static void
+wireless_close_script_proc_fd2(struct wireless_device *wdev)
+{
+	if (wdev->wpa_script_proc_fd.fd < 0)
+	      return;
+	uloop_fd_delete(&wdev->wpa_script_proc_fd);
+	close(wdev->wpa_script_proc_fd.fd);
+	wdev->wpa_script_proc_fd.fd = -1;
+
 }
 
 static void
@@ -189,11 +211,33 @@ wireless_process_kill_all(struct wireless_device *wdev, int signal, bool free)
 }
 
 static void
+wireless_process_kill_all2(struct wireless_device *wdev, int signal, bool free)
+{
+	struct wireless_process *proc, *tmp;
+
+	list_for_each_entry_safe(proc, tmp, &wdev->wpa_script_proc, list) {
+		bool check = wireless_process_check(proc);
+
+		if (check) {
+			D(WIRELESS, "Wireless device '%s' kill pid %d\n", wdev->name, proc->pid);
+			kill(proc->pid, signal);
+		}
+
+		if (free || !check)
+		      wireless_process_free2(wdev, proc);
+	}
+
+	if (free)
+	      wireless_close_script_proc_fd2(wdev);
+}
+
+static void
 wireless_device_free_state(struct wireless_device *wdev)
 {
 	struct wireless_interface *vif;
 
 	uloop_timeout_cancel(&wdev->script_check);
+
 	uloop_timeout_cancel(&wdev->timeout);
 	wireless_complete_kill_request(wdev);
 	free(wdev->data);
@@ -202,6 +246,27 @@ wireless_device_free_state(struct wireless_device *wdev)
 		free(vif->data);
 		vif->data = NULL;
 		vif->ifname = NULL;
+	}
+}
+
+static void
+wireless_device_free_state2(struct wireless_device *wdev)
+{
+	struct wireless_interface *vif;
+
+	uloop_timeout_cancel(&wdev->wpa_script_check);
+
+	uloop_timeout_cancel(&wdev->timeout);
+	wireless_complete_kill_request2(wdev);
+	//free(wdev->data);
+	//wdev->data = NULL;
+	vlist_for_each_element(&wdev->interfaces, vif, node) {
+		if (!vif->ap_mode)
+		{
+			free(vif->data);
+			vif->data = NULL;
+			vif->ifname = NULL;
+		}
 	}
 }
 
@@ -251,7 +316,19 @@ wireless_device_setup_cancel(struct wireless_device *wdev)
 }
 
 static void
-wireless_device_run_handler(struct wireless_device *wdev, struct wireless_interface *iface,
+wireless_device_setup_cancel2(struct wireless_device *wdev)
+{
+	if (wdev->wpa_cancel)
+	      return;
+
+	D(WIRELESS, "Cancel wireless device '%s' wpas setup\n", wdev->name);
+	wdev->wpa_cancel = true;
+	uloop_timeout_set(&wdev->wpa_timeout, 10 * 1000);
+}
+
+static void
+//wireless_device_run_handler(struct wireless_device *wdev, struct wireless_interface *iface,
+wireless_device_run_handler(struct wireless_device *wdev, bool ap,
 			enum wireless_config s)
 {
 	const char *argv[7];
@@ -270,15 +347,19 @@ wireless_device_run_handler(struct wireless_device *wdev, struct wireless_interf
 			action = "setup";
 			up = true;
 			break;
-		case WDEV_RELOAD:
+	/*	case WDEV_RELOAD:
 			if (iface) {
 				action = iface->ap_mode ? "reload" : "wpaupdate";
 				up = true;
 				break;
 			}
-		case WDEV_REP:
-			action = "repeater";
+	*/	case WDEV_REPUP:
+			action = "repup";
 			up = true;
+			break;
+		case WDEV_REPDOWN:
+			action = "repdown";
+			up = false;
 			break;
 		default:
 			action = "setup";
@@ -302,20 +383,28 @@ wireless_device_run_handler(struct wireless_device *wdev, struct wireless_interf
 	argv[i++] = action;
 	argv[i++] = wdev->name;
 	argv[i++] = config;
-	if(iface)
+/*	if(iface)
 		argv[i++] = iface->ifname;
 	else
 	      argv[i++] = NULL;
-	argv[i] = NULL;
-	up = (s == WDEV_SETUP);
+*/	argv[i] = NULL;
+	if (ap) {
 		if (up && pipe(fds) == 0) {
 			wdev->script_proc_fd.fd = fds[0];
-			D(WIRELESS, "\n fds is '%d' >>>>\n", fds[0]);
 			uloop_fd_add(&wdev->script_proc_fd,
 						ULOOP_READ | ULOOP_EDGE_TRIGGER);
 		}
+		netifd_start_process(argv, NULL, &wdev->script_task);
+	} else {
+		if (up && pipe(fds) == 0) {
+			wdev->wpa_script_proc_fd.fd = fds[0];
+			uloop_fd_add(&wdev->wpa_script_proc_fd,
+						ULOOP_READ | ULOOP_EDGE_TRIGGER);
+		}
+		netifd_start_process(argv, NULL, &wdev->wpa_script_task);
+	}
 
-	netifd_start_process(argv, NULL, &wdev->script_task);
+	//netifd_start_process(argv, NULL, &wdev->script_task);
 
 	if (up)
 		if (fds[1] >= 0)
@@ -338,6 +427,21 @@ __wireless_device_set_up(struct wireless_device *wdev)
 	wireless_device_run_handler(wdev, NULL, WDEV_SETUP);
 }
 
+static void
+__wireless_device_set_up2(struct wireless_device *wdev)
+{
+	if (wdev->wpa_disabled)
+	      return;
+
+	if (wdev->wpa_state != IFS_DOWN || config_init)
+	      return;
+
+	free(wdev->prev_config);
+	wdev->prev_config = NULL;
+	wdev->wpa_state = IFS_SETUP;
+	wireless_device_run_handler(wdev, NULL, WDEV_REPUP);
+
+}
 static void
 wireless_device_free(struct wireless_device *wdev)
 {
@@ -374,6 +478,28 @@ wdev_handle_config_change(struct wireless_device *wdev, bool is_config_changed)
 }
 
 static void
+wdev_handle_config_change2(struct wireless_device *wdev, bool is_config_changed)
+{
+	enum interface_config_state state = wdev->wpa_config_state;
+
+	switch(state) {
+	case IFC_NORMAL:
+	case IFC_RELOAD:
+		wdev->wpa_config_state = IFC_NORMAL;
+		if (wdev->wpa_autostart){
+			__wireless_device_set_up2(wdev);
+		}else{
+			//force set up if autostart retry max reached by something has changed
+			if(is_config_changed) wireless_device_set_up2(wdev);
+		}
+		break;
+	case IFC_REMOVE:
+		wireless_device_free(wdev);
+		break;
+	}
+}
+
+static void
 wireless_device_mark_down(struct wireless_device *wdev)
 {
 	struct wireless_interface *vif;
@@ -381,14 +507,38 @@ wireless_device_mark_down(struct wireless_device *wdev)
 	D(WIRELESS, "Wireless device '%s' is now down\n", wdev->name);
 
 	vlist_for_each_element(&wdev->interfaces, vif, node)
-		wireless_interface_handle_link(vif, false);
+	{
+		if (vif->ap_mode)
+		      wireless_interface_handle_link(vif, false);
+	}
 
 	wireless_process_kill_all(wdev, SIGTERM, true);
 
 	wdev->cancel = false;
 	wdev->state = IFS_DOWN;
 	wireless_device_free_state(wdev);
-	wdev_handle_config_change(wdev,false);
+	wdev_handle_config_change(wdev, false);
+}
+
+static void
+wireless_device_mark_down2(struct wireless_device *wdev)
+{
+	struct wireless_interface *vif;
+
+	D(WIRELESS, "Wireless device '%s' wpa is now down\n", wdev->name);
+
+	vlist_for_each_element(&wdev->interfaces, vif, node)
+	{
+		if (!vif->ap_mode)
+		      wireless_interface_handle_link(vif, false);
+	}
+
+	wireless_process_kill_all2(wdev, SIGTERM, true);
+
+	wdev->wpa_cancel = false;
+	wdev->wpa_state = IFS_DOWN;
+	wireless_device_free_state2(wdev);
+	wdev_handle_config_change2(wdev, false);
 }
 
 static void
@@ -401,6 +551,15 @@ wireless_device_setup_timeout(struct uloop_timeout *timeout)
 	wireless_device_mark_down(wdev);
 }
 
+static void
+wireless_device_setup_timeout2(struct uloop_timeout *wpa_timeout)
+{
+	struct wireless_device *wdev = container_of(wpa_timeout, struct wireless_device, wpa_timeout);
+
+	netifd_kill_process(&wdev->wpa_script_task);
+	wdev->script_task.cb(&wdev->wpa_script_task, -1);
+	wireless_device_mark_down2(wdev);
+}
 void
 wireless_device_set_up(struct wireless_device *wdev)
 {
@@ -425,6 +584,24 @@ __wireless_device_set_down(struct wireless_device *wdev)
 }
 
 static void
+__wireless_device_set_down2(struct wireless_device *wdev)
+{
+//	struct wireless_device *wdev = iface->wdev;
+
+	if (wdev->wpa_state == IFS_TEARDOWN || wdev->wpa_state == IFS_DOWN)
+	      return;
+
+	//iface->script??
+	if (wdev->wpa_script_task.uloop.pending) {
+		wireless_device_setup_cancel2(wdev);
+		return;
+	}
+
+	wdev->wpa_state = IFS_TEARDOWN;
+	wireless_device_run_handler(wdev, NULL, WDEV_REPDOWN);
+}
+
+static void
 wireless_device_mark_up(struct wireless_device *wdev)
 {
 	struct wireless_interface *vif;
@@ -435,7 +612,7 @@ wireless_device_mark_up(struct wireless_device *wdev)
 		__wireless_device_set_down(wdev);
 		return;
 	}
-	if (wdev->state == IFS_REP)
+	if (wdev->config_state == IFC_REP)
 	      rep = true;
 	D(WIRELESS, "Wireless device '%s' is now up\n", wdev->name);
 	wdev->state = IFS_UP;
@@ -480,13 +657,30 @@ wireless_device_script_task_cb(struct netifd_process *proc, int ret)
 	}
 }
 
+static void
+wireless_device_script_task_cb2(struct netifd_process *proc, int ret)
+{
+	struct wireless_device *wdev = container_of(proc, struct wireless_device, wpa_script_task);
+
+	switch (wdev->state) {
+	case IFS_SETUP:
+		wireless_device_retry_setup2(wdev);
+		break;
+	case IFS_TEARDOWN:
+		wireless_device_mark_down2(wdev);
+		break;
+	default:
+		break;
+	}
+}
+
 void
 wireless_device_set_down(struct wireless_device *wdev)
 {
 	wdev->autostart = false;
 	__wireless_device_set_down(wdev);
 }
-
+/*
 static void
 iface_set_config_state(struct wireless_interface *iface, enum interface_config_state s)
 {
@@ -497,27 +691,29 @@ iface_set_config_state(struct wireless_interface *iface, enum interface_config_s
 	//it seems that there is no needs to set config_state here.
 	wdev->config_state = s;
 	if (wdev->state == IFS_DOWN)
-	      wdev_handle_config_change(wdev,true);
+	      wdev_handle_config_change(wdev, true);
 	else {
 		wireless_device_run_handler(wdev, iface, WDEV_RELOAD);
 		wdev->config_state = IFC_NORMAL;
 	}
 }
+*/
 
 static void
-wdev_set_config_state2(struct wireless_interface *iface, enum interface_config_state s)
+wdev_set_config_state2(struct wireless_device *wdev, enum interface_config_state s)
 {
-	struct wireless_device *wdev = iface->wdev;
-	if (wdev->config_state != IFC_NORMAL)
+	//struct wireless_device *wdev = iface->wdev;
+	if (wdev->wpa_config_state != IFC_NORMAL)
 	      return;
 
-	//wdev->config_state = s;
-	if(wdev->state == IFS_DOWN)
-	      wdev_handle_config_change(wdev,true);
+	wdev->config_state = s;
+	if (wdev->state == IFS_DOWN)
+		wdev_handle_config_change(wdev, true);
+	else if (iface->state == IFS_DOWN)
+		wpa_handle_config_change(iface, true);
 	else {
-		wdev->state = IFS_REP;
-		wireless_device_run_handler(wdev, iface, WDEV_REP);
-		//wdev->config_state = IFC_NORMAL;
+		//wdev->state = IFS_REP;// HOW AND WHAT TO GET WDEV STATE BACK?
+		__wireless_device_set_down2(wdev);
 	}
 }
 
@@ -685,10 +881,12 @@ vif_update(struct vlist_tree *tree, struct vlist_node *node_new,
 	struct wireless_device *wdev;
 	bool mode_old;
 
-	if (vif_old) {
+	if (vif_old)
+	{
 		wdev = vif_old->wdev;
 		mode_old = vif_old->ap_mode;
-	} else
+	}
+	else
 		wdev = vif_new->wdev;
 
 	if (vif_old && vif_new) {
@@ -700,6 +898,7 @@ vif_update(struct vlist_tree *tree, struct vlist_node *node_new,
 		}
 
 		D(WIRELESS, "Update wireless interface %s on device %s\n", vif_new->name, wdev->name);
+	//	mode_old = vif_old->ap_mode;
 		wireless_interface_handle_link(vif_old, false);
 		free(vif_old->config);
 		vif_old->config = blob_memdup(vif_new->config);
@@ -707,10 +906,11 @@ vif_update(struct vlist_tree *tree, struct vlist_node *node_new,
 		vif_old->ap_mode = vif_new->ap_mode;
 		wireless_interface_init_config(vif_old);
 		free(vif_new);
-		if(mode_old != vif_old->ap_mode)
+		if(mode_old)
 		      goto out;
-		iface_set_config_state(vif_old, IFC_RELOAD);
-		wireless_interface_handle_link(vif_old, true);
+		wdev_set_config_state2(wdev, IFC_RELOAD);
+		//iface_set_config_state(vif_old, IFC_RELOAD);
+	//	wireless_interface_handle_link(vif_old, true);
 		return;
 	} else if (vif_new) {
 		D(WIRELESS, "Create new wireless interface %s on device %s\n", vif_new->name, wdev->name);
@@ -719,8 +919,10 @@ vif_update(struct vlist_tree *tree, struct vlist_node *node_new,
 		wireless_interface_init_config(vif_new);
 		if (vif_new->ap_mode)
 		      goto out;
-		D(WIRELESS, "Create new wpa_supplicant interface %s on device %s\n", vif_new->name, wdev->name);
-		wdev_set_config_state2(vif_new, IFC_RELOAD);
+		//wdev_set_config_state2(vif_new, IFC_RELOAD);
+		//wdev->config_state = IFC_REP;
+		//wireless_device_run_handler(wdev, iface, WDEV_REPUP)
+		wdev_set_config_state2(wdev, IFC_RELOAD);
 		return;
 	} else if (vif_old) {
 		D(WIRELESS, "Delete wireless interface %s on device %s\n", vif_old->name, wdev->name);
@@ -729,7 +931,7 @@ vif_update(struct vlist_tree *tree, struct vlist_node *node_new,
 		free(vif_old);
 		if (mode_old)
 		      goto out;
-		wireless_device_run_handler(wdev, NULL, WDEV_REPDOWN);
+		wdev_set_config_state2(wdev, IFC_RELOAD);
 		return;
 	}
 out:
@@ -766,6 +968,33 @@ done:
 }
 
 static void
+wireless_proc_poll_fd2(struct uloop_fd *fd, unsigned int events)
+{
+	struct wireless_device *wdev = container_of(fd, struct wireless_device, wpa_script_proc_fd);
+	char buf[128];
+
+	while (1) {
+		int b = read(fd->fd, buf, sizeof(buf));
+		if (b < 0) {
+			if (errno == EINTR)
+			      continue;
+			if (errno == EAGAIN)
+			{
+				return;
+			}
+			goto done;
+		}
+
+		if (!b)
+		      goto done;
+	}
+
+done:
+	uloop_timeout_set(&wdev->wpa_script_check, 0);
+	wireless_close_script_proc_fd2(wdev);
+}
+
+static void
 wireless_device_check_script_tasks(struct uloop_timeout *timeout)
 {
 	struct wireless_device *wdev = container_of(timeout, struct wireless_device, script_check);
@@ -789,6 +1018,29 @@ wireless_device_check_script_tasks(struct uloop_timeout *timeout)
 		uloop_timeout_set(&wdev->script_check, 1000);
 }
 
+static void
+wireless_device_check_script_tasks2(struct uloop_timeout *timeout)
+{
+	struct wireless_device *wdev = container_of(timeout, struct wireless_device, wpa_script_check);
+	struct wireless_process *proc, *tmp;
+	bool restart = false;
+
+	list_for_each_entry_safe(proc, tmp, &wdev->wpa_script_proc, list) {
+		if (wireless_process_check(proc))
+		      continue;
+
+		D(WIRELESS, "Wireless device '%s' pid %d has terminated\n", wdev->name, proc->pid);
+		if (proc->required)
+		      restart = true;
+
+		wireless_process_free2(wdev, proc);
+	}
+
+	if (restart)
+	      wireless_device_retry_setup2(wdev);
+	else
+	      uloop_timeout_set(&wdev->wpa_script_check, 1000);
+}
 void
 wireless_device_create(struct wireless_driver *drv, const char *name, struct blob_attr *data)
 {
@@ -804,11 +1056,15 @@ wireless_device_create(struct wireless_driver *drv, const char *name, struct blo
 	wdev->drv = drv;
 	wdev->state = IFS_DOWN;
 	wdev->config_state = IFC_NORMAL;
+	wdev->wpa_state = IFS_DOWN;
+	wdev->wpa_config_state = IFC_NORMAL;
 	wdev->name = strcpy(name_buf, name);
 	wdev->config = data;
 	wdev->config_autostart = true;
 	wdev->autostart = wdev->config_autostart;
+	//wdev->wpa_autostart = wdev->wpa_config_autostart;
 	INIT_LIST_HEAD(&wdev->script_proc);
+	INIT_LIST_HEAD(&wdev->wpa_script_proc);
 	vlist_init(&wdev->interfaces, avl_strcmp, vif_update);
 	wdev->interfaces.keep_old = true;
 
@@ -817,9 +1073,18 @@ wireless_device_create(struct wireless_driver *drv, const char *name, struct blo
 	wdev->script_task.dir_fd = drv_fd;
 	wdev->script_task.log_prefix = wdev->name;
 
+	wdev->wpa_timeout.cb = wireless_device_setup_timeout2;
+	wdev->wpa_script_task.cb = wireless_device_script_task_cb2;
+	wdev->wpa_script_task.dir_fd = drv_fd;
+	wdev->wpa_script_task.log_prefix = wdev->name;
+
+	wdev->wpa_script_proc_fd.fd = -1;
+	wdev->wpa_script_proc_fd.cb = wireless_proc_poll_fd2;
+
 	wdev->script_proc_fd.fd = -1;
 	wdev->script_proc_fd.cb = wireless_proc_poll_fd;
 
+	wdev->wpa_script_check.cb = wireless_device_check_script_tasks2;
 	wdev->script_check.cb = wireless_device_check_script_tasks;
 
 	vlist_add(&wireless_devices, &wdev->node, wdev->name);
@@ -971,18 +1236,20 @@ wireless_device_add_process(struct wireless_device *wdev, struct blob_attr *data
 		proc->required = blobmsg_get_bool(tb[PROC_ATTR_REQUIRED]);
 
 	D(WIRELESS, "Wireless device '%s' add pid %d\n", wdev->name, proc->pid);
-
-	if (wdev->state == IFS_REP)
-	      return 0;
-	list_add(&proc->list, &wdev->script_proc);
-	uloop_timeout_set(&wdev->script_check, 0);
+	if (wdev->config_state != IFC_REP) {
+		list_add(&proc->list, &wdev->script_proc);
+		uloop_timeout_set(&wdev->script_check, 0);
+	} else {
+		list_add(&proc->list, &wdev->wpa_script_proc);
+		uloop_timeout_set(&wdev->wpa_script_check, 0);
+	}
 
 	return 0;
 }
 
 static int
 wireless_device_process_kill_all(struct wireless_device *wdev, struct blob_attr *data,
-				 struct ubus_request_data *req)
+				 struct ubus_request_data *req, bool ap)
 {
 	enum {
 		KILL_ATTR_SIGNAL,
@@ -1011,7 +1278,9 @@ wireless_device_process_kill_all(struct wireless_device *wdev, struct blob_attr 
 
 	wireless_process_kill_all(wdev, signal, immediate);
 
-	if (list_empty(&wdev->script_proc))
+	if (ap && list_empty(&wdev->script_proc))
+		return 0;
+	if (!ap && list_empty(&wdev->wpa_script_proc))
 		return 0;
 
 	wdev->kill_request = calloc(1, sizeof(*wdev->kill_request));
@@ -1021,7 +1290,7 @@ wireless_device_process_kill_all(struct wireless_device *wdev, struct blob_attr 
 }
 
 static int
-wireless_device_set_retry(struct wireless_device *wdev, struct blob_attr *data)
+wireless_device_set_retry(struct wireless_device *wdev, struct blob_attr *data, bool ap)
 {
 	static const struct blobmsg_policy retry_policy = {
 		.name = "retry", .type = BLOBMSG_TYPE_INT32
@@ -1032,7 +1301,11 @@ wireless_device_set_retry(struct wireless_device *wdev, struct blob_attr *data)
 	if (!val)
 		return UBUS_STATUS_INVALID_ARGUMENT;
 
-	wdev->retry = blobmsg_get_u32(val);
+	if(ap)
+	      wdev->retry = blobmsg_get_u32(val);
+	else
+	      wdev->wpa_retry = blobmsg_get_u32(val);
+
 	return 0;
 }
 
@@ -1042,6 +1315,9 @@ enum {
 	NOTIFY_CMD_PROCESS_ADD = 2,
 	NOTIFY_CMD_PROCESS_KILL_ALL = 3,
 	NOTIFY_CMD_SET_RETRY = 4,
+	NOTIFY_CMD_WPAUP = 5,
+	NOTIFY_CMD_PROCESS_KILL_WPA = 6,
+	NOTIFY_CMD_SET_WPARETRY = 7,
 };
 
 int
@@ -1083,10 +1359,19 @@ wireless_device_notify(struct wireless_device *wdev, struct blob_attr *data,
 		if (vif)
 			return UBUS_STATUS_INVALID_ARGUMENT;
 
-		if (wdev->state != IFS_SETUP && wdev->state != IFS_REP)
+		if (wdev->state != IFS_SETUP)
 			return UBUS_STATUS_PERMISSION_DENIED;
 
 		wireless_device_mark_up(wdev);
+		break;
+	case NOTIFY_CMD_WPAUP:
+		if (vif)
+		      return UBUS_STATUS_INVALID_ARGUMENT;
+
+		if (wdev->wpa_state != IFS_SETUP)
+		      return UBUS_STATUS_PERMISSION_DENIED;
+
+		wireless_device_mark_up2(wdev);
 		break;
 	case NOTIFY_CMD_SET_DATA:
 		if (vif)
@@ -1104,9 +1389,13 @@ wireless_device_notify(struct wireless_device *wdev, struct blob_attr *data,
 	case NOTIFY_CMD_PROCESS_ADD:
 		return wireless_device_add_process(wdev, cur);
 	case NOTIFY_CMD_PROCESS_KILL_ALL:
-		return wireless_device_process_kill_all(wdev, cur, req);
+		return wireless_device_process_kill_all(wdev, cur, req, true);
+	case NOTIFY_CMD_PROCESS_KILL_WPA:
+		return wireless_device_process_kill_all(wdev, cur, req, false);
 	case NOTIFY_CMD_SET_RETRY:
-		return wireless_device_set_retry(wdev, cur);
+		return wireless_device_set_retry(wdev, cur, true);
+	case NOTIFY_CMD_SET_WPARETRY:
+		return wireless_device_set_retry(wdev, cur, false);
 	default:
 		return UBUS_STATUS_INVALID_ARGUMENT;
 	}
@@ -1120,6 +1409,10 @@ wireless_start_pending(void)
 	struct wireless_device *wdev;
 
 	vlist_for_each_element(&wireless_devices, wdev, node)
+	{
 		if (wdev->autostart)
 			__wireless_device_set_up(wdev);
+		if (wdev->wpa_autostart)
+			__wireless_device_set_up2(wdev);
+	}
 }
