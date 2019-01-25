@@ -211,8 +211,8 @@ wireless_process_kill_all(struct wireless_device *wdev, int signal, bool free)
 	struct wireless_process *proc, *tmp;
 
 	list_for_each_entry_safe(proc, tmp, &wdev->script_proc, list) {
-		if (proc->mode)
-		{
+		//if (proc->mode)
+		//{
 			bool check = wireless_process_check(proc);
 
 			if (check) {
@@ -222,7 +222,7 @@ wireless_process_kill_all(struct wireless_device *wdev, int signal, bool free)
 
 			if (free || !check)
 				wireless_process_free(wdev, proc, true);
-		}
+		//}
 	}
 
 	if (free)
@@ -235,8 +235,8 @@ wireless_process_kill_all2(struct wireless_device *wdev, int signal, bool free)
 	struct wireless_process *proc, *tmp;
 
 	list_for_each_entry_safe(proc, tmp, &wdev->wpa_script_proc, list) {
-		if (!proc->mode)
-		{
+		//if (!proc->mode)
+	//	{
 			bool check = wireless_process_check(proc);
 
 			if (check) {
@@ -246,7 +246,7 @@ wireless_process_kill_all2(struct wireless_device *wdev, int signal, bool free)
 
 			if (free || !check)
 				wireless_process_free(wdev, proc, false);
-		}
+	//	}
 	}
 
 	if (free)
@@ -619,7 +619,7 @@ wireless_wpas_setup_timeout(struct uloop_timeout *wpa_timeout)
 	struct wireless_device *wdev = container_of(wpa_timeout, struct wireless_device, wpa_timeout);
 
 	netifd_kill_process(&wdev->wpa_script_task);
-	wdev->script_task.cb(&wdev->wpa_script_task, 0);
+	wdev->wpa_script_task.cb(&wdev->wpa_script_task, -1);
 	wireless_device_mark_down(wdev, false);
 }
 
@@ -681,7 +681,7 @@ wireless_device_mark_up(struct wireless_device *wdev)
 }
 
 static void
-wireless_device_mark_up2(struct wireless_device *wdev)
+wireless_wpas_mark_up(struct wireless_device *wdev)
 {
 	struct wireless_interface *vif;
 
@@ -728,21 +728,10 @@ wireless_device_retry_setup2(struct wireless_device *wdev)
 static void
 wireless_device_script_task_cb(struct netifd_process *proc, int ret)
 {
-	struct wireless_device *wdev;
+	struct wireless_device *wdev = container_of(proc, struct wireless_device, script_task);
 	bool mode = true;
-	enum interface_state state;
-	if (ret)
-	{
-		wdev = container_of(proc, struct wireless_device, script_task);
-		mode = true;
-		state = wdev->state;
-	} else {
-		wdev = container_of(proc, struct wireless_device, wpa_script_task);
-		mode = false;
-		state = wdev->wpa_state;
-	}
 
-	switch (state) {
+	switch (wdev->state) {
 	case IFS_SETUP:
 		wireless_device_retry_setup(wdev, mode);
 		break;
@@ -754,9 +743,9 @@ wireless_device_script_task_cb(struct netifd_process *proc, int ret)
 	}
 }
 
-/*
+
 static void
-wireless_device_script_task_cb2(struct netifd_process *proc, int ret)
+wireless_wpas_script_task_cb(struct netifd_process *proc, int ret)
 {
 	struct wireless_device *wdev = container_of(proc, struct wireless_device, wpa_script_task);
 	bool mode = false;
@@ -772,7 +761,7 @@ wireless_device_script_task_cb2(struct netifd_process *proc, int ret)
 		break;
 	}
 }
-*/
+
 
 void
 wireless_device_set_down(struct wireless_device *wdev)
@@ -801,11 +790,23 @@ iface_set_config_state(struct wireless_interface *iface, enum interface_config_s
 	}
 }
 */
+/*
+static void
+wdev_set_config_state(struct wireless_device *wdev, enum interface_config_state s, bool ap)
+{
+	if (ap)
+	{
+		config_state = wdev->config_state;
+		state = wdev->state;
+	}
+	config_state = s;
+	if (state == IFS_DOWN)
+}
+*/
 
 static void
 wdev_set_config_state2(struct wireless_device *wdev, enum interface_config_state s)
 {
-	//struct wireless_device *wdev = iface->wdev;
 	if (wdev->wpa_config_state != IFC_NORMAL)
 	      return;
 
@@ -1223,7 +1224,7 @@ wireless_device_create(struct wireless_driver *drv, const char *name, struct blo
 	wdev->script_task.log_prefix = wdev->name;
 
 	wdev->wpa_timeout.cb = wireless_wpas_setup_timeout;
-	wdev->wpa_script_task.cb = wireless_device_script_task_cb;
+	wdev->wpa_script_task.cb = wireless_wpas_script_task_cb;
 	wdev->wpa_script_task.dir_fd = drv_fd;
 	wdev->wpa_script_task.log_prefix = wdev->name;
 
@@ -1380,7 +1381,7 @@ wireless_device_add_process(struct wireless_device *wdev, struct blob_attr *data
 
 	proc->pid = pid;
 	proc->exe = strcpy(name, blobmsg_data(tb[PROC_ATTR_EXE]));
-	proc->mode = ap;
+	//proc->mode = ap;
 
 	if (tb[PROC_ATTR_REQUIRED])
 		proc->required = blobmsg_get_bool(tb[PROC_ATTR_REQUIRED]);
@@ -1522,7 +1523,7 @@ wireless_device_notify(struct wireless_device *wdev, struct blob_attr *data,
 		if (wdev->wpa_state != IFS_SETUP)
 		      return UBUS_STATUS_PERMISSION_DENIED;
 
-		wireless_device_mark_up2(wdev);
+		wireless_wpas_mark_up(wdev);
 		break;
 	case NOTIFY_CMD_SET_DATA:
 		if (vif)

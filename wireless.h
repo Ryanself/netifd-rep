@@ -111,7 +111,7 @@ struct wireless_process {
 	int pid;
 
 	bool required;
-	bool mode;
+	//bool mode;
 };
 
 /*
