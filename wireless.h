@@ -48,8 +48,8 @@ struct wireless_device {
 	struct uloop_timeout script_check;
 
 	struct ubus_request_data *kill_request;
+	struct ubus_request_data *wpa_kill_request;
 	//wpa-------------------------------
-	struct netifd_process wpa_script_task;
 	struct netifd_process wpa_script_task;
 	struct uloop_timeout wpa_timeout;
 	struct uloop_timeout wpa_poll;
@@ -82,7 +82,7 @@ struct wireless_device {
 
 	int vif_idx;
 	bool hostap_remove;
-	bool wpa_remove;
+	bool wpas_remove;
 };
 
 struct wireless_interface {
@@ -111,6 +111,7 @@ struct wireless_process {
 	int pid;
 
 	bool required;
+	bool mode;
 };
 
 /*
