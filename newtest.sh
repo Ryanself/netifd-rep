@@ -3,29 +3,29 @@
 #set 2.4g or 5g to connect
 prepare(){
 
-	key=12345678
-	ssid="siwifi-0364-2.4G"
-	ssid2="siwifi-3070"
-	bssid=""
-	bssid2=""
+	key="12345678"
+	ssid="SiWiFi-306c-2.4G"
+	ssid2="SiWiFi-3070"
+	bssid="10:16:88:5A:30:6C"
+	bssid2="10:16:88:5A:30:70"
 	rai=
 	local up_time=0
 	sleep 2
 
 	case $1 in
 	0)
-		uci set wireless.@wifi-iface[4].key="$key"
-		uci set wireless.@wifi-iface[4].ssid="$ssid"
-		uci set wireless.@wifi0iface[4].bssid="$bssid"
-		uci set wireless.@wifi-iface[4].disabled="0"
-		uci set wireless.@wifi-iface[5].disabled="1"
+		uci set wireless.@wifi-iface[2].key="$key"
+		uci set wireless.@wifi-iface[2].ssid="$ssid"
+		uci set wireless.@wifi-iface[2].bssid="$bssid"
+		uci set wireless.@wifi-iface[2].disabled='0'
+		#uci set wireless.@wifi-iface[3].disabled='1'
 		;;
 	1)
-		uci set wireless.@wifi-iface[5].key="$key"
-		uci set wireless.@wifi-iface[5].ssid="$ssid2"
-		uci set wireless.@wifi0iface[5].bssid="$bssid2"
-		uci set wireless.@wifi-iface[5].disabled="0"
-		uci set wireless.@wifi-iface[4].disabled="1"
+		uci set wireless.@wifi-iface[3].key="$key"
+		uci set wireless.@wifi-iface[3].ssid="$ssid2"
+		uci set wireless.@wifi-iface[3].bssid="$bssid2"
+		uci set wireless.@wifi-iface[3].disabled='0'
+		#uci set wireless.@wifi-iface[2].disabled='1'
 		;;
 	esac
 
@@ -55,12 +55,12 @@ check_ip(){
 	rai0)
 		iface=0
 		wan="lan wwan"
-		rai_num=4
+		rai_num=2
 		;;
 	rai1)
 		iface=3
 		wan="lan wwwan"
-		rai_num=5
+		rai_num=3
 		;;
 	esac
 
@@ -68,9 +68,10 @@ check_ip(){
 	do
 		sleep 2
 		let "checktime++"
-		check=`ifconfig rai0 | grep "inet addr"`
+		check=`ifconfig $rai | grep "inet addr"`
 		[ $checktime -gt 15 ] && echo "wds get ip failed: time out>>>>>>>>>>"
 	done
+	check=
 }
 
 #connect and set dns and relayd
@@ -86,10 +87,10 @@ setwds(){
 	#get and set ap channel
 	chan=`iwinfo $rai info | grep Chan|awk -F ' ' '{print $4}'`
 	[ "$chan" = "unknown"  ] || {
-		[ -n "$iface" ] && uci set wireless.@wifi-iface[$iface].channel= "$chan"
+		[ -n "$iface" ] && uci set wireless.@wifi-iface[$iface].channel="$chan"
 		uci commit
 	}
-
+	wifi reload
 }
 
 #reset to reconnect
@@ -97,7 +98,7 @@ resetwds(){
 	sleep 1
 	uci set network.stabridge.disabled='1'
 	uci set basic_setting.dnsmasq.down='0'
-	uci set wireless.@wifi-iface[$rai_num].disabled="1"
+	uci set wireless.@wifi-iface[$rai_num].disabled='1'
 
 	uci commit
 	/etc/init.d/dnsmasq restart
@@ -121,6 +122,7 @@ checkwds(){
 		[ $checktime -gt 15  ] && echo "rep ping server failed: time out!>>>>>>>>>>" > /dev/console
 		sleep 2
 	done
+	wds=0
 
 	sleep 2
 }
@@ -130,7 +132,6 @@ band=0
 echo ">>>>>>>>>>>>>>>>>>>>>repeater wds test start<<<<<<<<<<<<<<<<<<<<<<<" > /dev/console
 while true
 do
-	let "band++"
 	let "testtime++"
 	echo ">>>>>>>>>>>>>>>test time: $testtime <<<<<<<<<<<<<<<<" > /dev/console
 	prepare $band
@@ -143,5 +144,10 @@ do
 		exit 0
 	else
 		resetwds
+	fi
+	if [ $band != 0 ];then
+		band=0
+	else
+		band=1
 	fi
 done

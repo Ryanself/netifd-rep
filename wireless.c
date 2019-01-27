@@ -1211,8 +1211,9 @@ wireless_device_create(struct wireless_driver *drv, const char *name, struct blo
 	wdev->name = strcpy(name_buf, name);
 	wdev->config = data;
 	wdev->config_autostart = true;
+	wdev->wpa_config_autostart = true;
 	wdev->autostart = wdev->config_autostart;
-	//wdev->wpa_autostart = wdev->wpa_config_autostart;
+	wdev->wpa_autostart = wdev->wpa_config_autostart;
 	INIT_LIST_HEAD(&wdev->script_proc);
 	INIT_LIST_HEAD(&wdev->wpa_script_proc);
 	vlist_init(&wdev->interfaces, avl_strcmp, vif_update);
