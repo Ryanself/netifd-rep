@@ -32,6 +32,10 @@ struct wireless_driver {
 	} device, interface;
 };
 
+/*
+ *@wpa* control wpa_supplicant
+ *@disabled control device, both hostap and wpas
+ */
 struct wireless_device {
 	struct vlist_node node;
 
@@ -48,8 +52,9 @@ struct wireless_device {
 	struct uloop_timeout script_check;
 
 	struct ubus_request_data *kill_request;
+
 	struct ubus_request_data *wpa_kill_request;
-	//wpa-------------------------------
+
 	struct netifd_process wpa_script_task;
 	struct uloop_timeout wpa_timeout;
 	struct uloop_timeout wpa_poll;
@@ -61,20 +66,16 @@ struct wireless_device {
 	struct blob_attr *prev_config;
 	struct blob_attr *config;
 	struct blob_attr *data;
-
 	bool config_autostart;
 	bool autostart;
 	bool disabled;
-	//wpa----------------------------
 	bool wpa_config_autostart;
 	bool wpa_autostart;
-	bool wpa_disabled;
 
 	enum interface_state state;
 	enum interface_config_state config_state;
 	bool cancel;
 	int retry;
-	//wpa---------------------------
 	enum interface_state wpa_state;
 	enum interface_config_state wpa_config_state;
 	bool wpa_cancel;

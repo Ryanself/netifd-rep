@@ -85,11 +85,11 @@ setwds(){
 	/etc/init.d/relayd reload
 
 	#get and set ap channel
-	chan=`iwinfo $rai info | grep Chan|awk -F ' ' '{print $4}'`
-	[ "$chan" = "unknown"  ] || {
-		[ -n "$iface" ] && uci set wireless.@wifi-iface[$iface].channel="$chan"
-		uci commit
-	}
+	#chan=`iwinfo $rai info | grep Chan|awk -F ' ' '{print $4}'`
+	#[ "$chan" = "unknown"  ] || {
+	#	[ -n "$iface" ] && uci set wireless.@wifi-iface[$iface].channel="$chan"
+	uci commit
+	#}
 	wifi reload
 }
 
@@ -104,6 +104,7 @@ resetwds(){
 	/etc/init.d/dnsmasq restart
 	sleep 2
 	/etc/init.d/network restart
+	#wifi reload
 	sleep 10
 }
 
@@ -145,6 +146,7 @@ do
 	else
 		resetwds
 	fi
+	cat proc/meminfo
 	if [ $band != 0 ];then
 		band=0
 	else
