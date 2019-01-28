@@ -331,7 +331,7 @@ _wdev_common_device_config() {
 }
 
 _wdev_common_iface_config() {
-	config_add_string mode ssid encryption 'key:wpakey' disable_network
+	config_add_string mode ssid encryption 'key:wpakey'
 }
 
 init_wireless_driver() {
@@ -363,7 +363,7 @@ init_wireless_driver() {
 			interface="$1"; shift
 			data="$1"; shift
 			case "$cmd" in
-				reload|wpa_update|repeater)
+				reload)
 					wiface="$1"; shift
 				;;
 			esac
