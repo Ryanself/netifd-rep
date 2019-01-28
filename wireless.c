@@ -245,7 +245,6 @@ wireless_device_mark_free(struct wireless_device *wdev)
 
 }
 
-//need review+++++++++++++++++
 static void
 wireless_device_free_state(struct wireless_device *wdev)
 {
@@ -256,8 +255,6 @@ wireless_device_free_state(struct wireless_device *wdev)
 	uloop_timeout_cancel(&wdev->timeout);
 	wireless_complete_kill_request(wdev);
 	wireless_device_mark_free(wdev);
-	//free(wdev->data);
-	//wdev->data = NULL;
 	vlist_for_each_element(&wdev->interfaces, vif, node) {
 		if (vif->ap_mode)
 		{
@@ -278,8 +275,6 @@ wireless_device_free_wpas_state(struct wireless_device *wdev)
 	uloop_timeout_cancel(&wdev->timeout);
 	wireless_complete_wpas_kill_request(wdev);
 	wireless_device_mark_free(wdev);
-	//free(wdev->data);
-	//wdev->data = NULL;
 	vlist_for_each_element(&wdev->interfaces, vif, node) {
 		if (!vif->ap_mode)
 		{
@@ -474,8 +469,6 @@ wireless_wpas_set_up(struct wireless_device *wdev)
 static void
 wireless_device_free(struct wireless_device *wdev)
 {
-	if (wdev->hostap_remove && wdev->wpas_remove)
-	      return;
 	vlist_flush_all(&wdev->interfaces);
 	avl_delete(&wireless_devices.avl, &wdev->node.avl);
 	free(wdev->config);
@@ -504,7 +497,8 @@ wdev_handle_config_change(struct wireless_device *wdev, bool is_config_changed)
 		break;
 	case IFC_REMOVE:
 		wdev->hostap_remove = true;
-		wireless_device_free(wdev);
+		if (wdev->wpas_remove)
+			wireless_device_free(wdev);
 		break;
 	}
 }
@@ -527,7 +521,8 @@ wdev_handle_wpasconfig_change(struct wireless_device *wdev, bool is_config_chang
 		break;
 	case IFC_REMOVE:
 		wdev->wpas_remove = true;
-		wireless_device_free(wdev);
+		if (wdev->hostap_remove)
+			wireless_device_free(wdev);
 		break;
 	}
 }
@@ -788,18 +783,18 @@ wdev_prepare_prev_config(struct wireless_device *wdev)
 	wdev->prev_config = blob_memdup(b.head);
 }
 
-//@able false means params disabled change, in this way it has influence on wpas.
+//@able true means params disabled change, in this way it has influence on wpas.
 static void
 wdev_change_config(struct wireless_device *wdev, struct wireless_device *wd_new)
 {
 	struct blob_attr *new_config = wd_new->config;
 	bool disabled = wd_new->disabled;
-	bool able = true;
+	bool able = false;
 	free(wd_new);
 
 	wdev_prepare_prev_config(wdev);
 	if (wdev->disabled != disabled)
-	      able = false;
+	      able = true;
 	if (blob_attr_equal(wdev->config, new_config) && wdev->disabled == disabled)
 		return;
 	D(WIRELESS, "Update configuration of wireless device '%s'\n", wdev->name);
@@ -807,7 +802,7 @@ wdev_change_config(struct wireless_device *wdev, struct wireless_device *wd_new)
 	wdev->config = blob_memdup(new_config);
 	wdev->disabled = disabled;
 	wdev_set_config_state(wdev, IFC_RELOAD);
-	if (!able)
+	if (able)
 		wdev_set_wpas_config_state(wdev, IFC_RELOAD);
 
 }
