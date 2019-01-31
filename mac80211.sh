@@ -830,19 +830,20 @@ drv_mac80211_repup() {
 		return 1
 	}
 
+	wireless_set_data phy="$phy"
 	mac80211_interface_cleanup "$phy" "wpa"
 
-	local ifname
+	#local ifname
 	# set macidx = 1 to avoid get the same macaddr with ap.
 	macidx=1
 
-	hostapd_ctrl=
+	#hostapd_ctrl=
 
-	[ -n "$ifname"  ] || ifname="wlan${phy#phy}"
-	[ -n "$hostapd_ctrl"   ] || hostapd_ctrl="${hostapd_ctrl:-/var/run/hostapd/$ifname}"
+	#[ -n "$ifname"  ] || ifname="rai${phy#phy}"
+	#[ -n "$hostapd_ctrl"   ] || hostapd_ctrl="${hostapd_ctrl:-/var/run/hostapd/$ifname}"
 
-	for_each_interface "sta wds-sta" mac80211_prepare_vif
-	for_each_interface "sta wds-sta" mac80211_setup_vif
+	for_each_interface "sta adhoc mesh monitor wds-sta" mac80211_prepare_vif
+	for_each_interface "sta adhoc mesh monitor wds-sta" mac80211_setup_vif
 	wireless_set_up_wpas
 }
 
@@ -905,7 +906,7 @@ drv_mac80211_setup() {
 
 	iw phy "$phy" set antenna $txantenna $rxantenna >/dev/null 2>&1
 	iw phy "$phy" set antenna_gain $antenna_gain
-	iw phy "$phy" set distance "$distance"
+	iw phy "$phy" set distance "$distance" 2 > /dev/null
 
 	[ -n "$frag" ] && iw phy "$phy" set frag "${frag%%.*}"
 	[ -n "$rts" ] && iw phy "$phy" set rts "${rts%%.*}"
@@ -930,7 +931,7 @@ drv_mac80211_setup() {
 		}
 	}
 
-	for_each_interface "ap adhoc mesh monitor wds-ap" mac80211_setup_vif
+	for_each_interface "ap wds-ap" mac80211_setup_vif
 	wireless_set_up
 }
 list_phy_interfaces() {

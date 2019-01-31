@@ -146,7 +146,7 @@ do
 	else
 		resetwds
 	fi
-	cat proc/meminfo
+	cat proc/meminfo | grep MemAvailable
 	if [ $band != 0 ];then
 		band=0
 	else

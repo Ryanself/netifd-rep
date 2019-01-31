@@ -362,11 +362,11 @@ init_wireless_driver() {
 		setup|teardown|reload|repup|repdown)
 			interface="$1"; shift
 			data="$1"; shift
-			case "$cmd" in
-				reload)
-					wiface="$1"; shift
-				;;
-			esac
+			#case "$cmd" in
+			#	reload)
+			#		wiface="$1"; shift
+			#	;;
+			#esac
 			export __netifd_device="$interface"
 
 			add_driver() {

@@ -1341,7 +1341,8 @@ wireless_device_process_kill_all(struct wireless_device *wdev, struct blob_attr 
 	if ((cur = tb[KILL_ATTR_IMMEDIATE]))
 		immediate = blobmsg_get_bool(cur);
 
-	if (wdev->state != IFS_TEARDOWN || wdev->kill_request)
+	if ((wdev->state != IFS_TEARDOWN || wdev->kill_request) &&
+				(wdev->wpa_state != IFS_TEARDOWN || wdev->wpa_kill_request))
 		return UBUS_STATUS_PERMISSION_DENIED;
 	if (ap)
 	      wireless_process_kill_all(wdev, signal, immediate);
