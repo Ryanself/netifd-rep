@@ -234,6 +234,7 @@ wireless_process_kill_wpas(struct wireless_device *wdev, int signal, bool free)
 	      wireless_close_wpas_script_proc_fd(wdev);
 }
 
+//@wireless_device_mark_free free wdev->data when ap and wpas down
 static void
 wireless_device_mark_free(struct wireless_device *wdev)
 {
@@ -272,7 +273,7 @@ wireless_device_free_wpas_state(struct wireless_device *wdev)
 
 	uloop_timeout_cancel(&wdev->wpa_script_check);
 
-	uloop_timeout_cancel(&wdev->timeout);
+	uloop_timeout_cancel(&wdev->wpa_timeout);
 	wireless_complete_wpas_kill_request(wdev);
 	wireless_device_mark_free(wdev);
 	vlist_for_each_element(&wdev->interfaces, vif, node) {
@@ -414,9 +415,9 @@ wireless_device_run_handler(struct wireless_device *wdev, bool ap,
 		netifd_start_process(argv, NULL, &wdev->wpa_script_task);
 	}
 
-	if (up)
-		if (fds[1] >= 0)
-			close(fds[1]);
+	//if (up)
+	if (fds[1] >= 0)
+		close(fds[1]);
 	free(config);
 }
 
@@ -1345,17 +1346,23 @@ wireless_device_process_kill_all(struct wireless_device *wdev, struct blob_attr 
 				(wdev->wpa_state != IFS_TEARDOWN || wdev->wpa_kill_request))
 		return UBUS_STATUS_PERMISSION_DENIED;
 	if (ap)
+	{
 	      wireless_process_kill_all(wdev, signal, immediate);
-	else
+
+	      if (list_empty(&wdev->script_proc))
+		    return 0;
+
+	      wdev->kill_request = calloc(1, sizeof(*wdev->kill_request));
+	      ubus_defer_request(ubus_ctx, req, wdev->kill_request);
+	} else {
 	      wireless_process_kill_wpas(wdev, signal, immediate);
 
-	if (ap && list_empty(&wdev->script_proc))
-		return 0;
-	if (!ap && list_empty(&wdev->wpa_script_proc))
-		return 0;
+	      if (list_empty(&wdev->wpa_script_proc))
+		    return 0;
 
-	wdev->kill_request = calloc(1, sizeof(*wdev->kill_request));
-	ubus_defer_request(ubus_ctx, req, wdev->kill_request);
+	      wdev->wpa_kill_request = calloc(1, sizeof(*wdev->wpa_kill_request));
+	      ubus_defer_request(ubus_ctx, req, wdev->wpa_kill_request);
+	}
 
 	return 0;
 }
