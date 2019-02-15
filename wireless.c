@@ -632,7 +632,10 @@ wireless_device_mark_up(struct wireless_device *wdev)
 	D(WIRELESS, "Wireless device '%s' is now up\n", wdev->name);
 	wdev->state = IFS_UP;
 	vlist_for_each_element(&wdev->interfaces, vif, node)
-		wireless_interface_handle_link(vif, true);
+	{
+		if (vif->ap_mode)
+		      wireless_interface_handle_link(vif, true);
+	}
 }
 
 static void
@@ -649,7 +652,10 @@ wireless_wpas_mark_up(struct wireless_device *wdev)
 	D(WIRELESS, "Wireless device '%s' is now up\n", wdev->name);
 	wdev->wpa_state = IFS_UP;
 	vlist_for_each_element(&wdev->interfaces, vif, node)
-		wireless_interface_handle_link(vif, true);
+	{
+		if (!vif->ap_mode)
+		      wireless_interface_handle_link(vif, true);
+	}
 }
 
 static void
