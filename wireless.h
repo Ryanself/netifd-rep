@@ -53,7 +53,18 @@ struct wireless_device {
 
 	struct ubus_request_data *kill_request;
 
-	struct ubus_request_data *wpa_kill_request;
+	bool config_autostart;
+	bool autostart;
+
+	enum interface_state state;
+	enum interface_config_state config_state;
+	bool cancel;
+	int retry;
+
+	struct blob_attr *prev_config;
+	struct blob_attr *config;
+	struct blob_attr *data;
+	bool disabled;
 
 	struct netifd_process wpa_script_task;
 	struct uloop_timeout wpa_timeout;
@@ -63,19 +74,11 @@ struct wireless_device {
 	struct uloop_fd wpa_script_proc_fd;
 	struct uloop_timeout wpa_script_check;
 
-	struct blob_attr *prev_config;
-	struct blob_attr *config;
-	struct blob_attr *data;
-	bool config_autostart;
-	bool autostart;
-	bool disabled;
+	struct ubus_request_data *wpa_kill_request;
+
 	bool wpa_config_autostart;
 	bool wpa_autostart;
 
-	enum interface_state state;
-	enum interface_config_state config_state;
-	bool cancel;
-	int retry;
 	enum interface_state wpa_state;
 	enum interface_config_state wpa_config_state;
 	bool wpa_cancel;

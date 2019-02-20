@@ -366,6 +366,16 @@ mac80211_get_addr() {
 	head -n $(($macidx + 1)) /sys/class/ieee80211/${phy}/addresses | tail -n1
 }
 
+mac802111_get_apmacidx(){
+	local phy="$1"
+	local mask="$(cat /sys/class/ieee80211/${phy}/address_mask)"
+
+	local oIFS="$IFS"; IFS=":"; set -- $mask; IFS="$oIFS"
+	local mask6=$6
+
+	macidx=$((0x$mask6))
+}
+
 mac80211_generate_mac() {
 	local phy="$1"
 	local id="${macidx:-0}"
@@ -435,6 +445,34 @@ mac80211_check_ap() {
 	has_ap=1
 }
 
+mac80211_iw_interface_add(){
+	local phy="$1"
+	local ifname="$2"
+	local type="$3"
+	local wdsflag="$4"
+	local rc
+
+	iw phy "$phy" interface add "$ifname" type "$type" $wdsflag
+	rc="$?"
+
+	[ "$rc" = 233  ] && {
+		# Device might have just been deleted, give the kernel some time to finish cleaning it up
+		sleep 1
+
+		iw phy "$phy" interface add "$ifname" type "$type" $wdsflag
+		rc="$?"
+	}
+
+	[ "$rc" = 233  ] && {
+		# Device might not support virtual interfaces, so the interface never got deleted in the first place.
+		# Check if the interface already exists, and avoid failing in this case.
+		ifconfig "$ifname" >/dev/null 2>/dev/null && rc=0
+	}
+
+	[ "$rc" != 0  ] && wireless_setup_failed INTERFACE_CREATION_FAILED
+	return $rc
+}
+
 mac80211_prepare_vif() {
 	json_select config
 
@@ -451,7 +489,14 @@ mac80211_prepare_vif() {
 
 	[ -n "$macaddr" ] || {
 		macaddr="$(mac80211_generate_mac $phy)"
-		macidx="$(($macidx + 1))"
+		case "$mode" in
+			sta|wds-sta)
+				macidx="$(($macidx + 1))"
+				;;
+			*)
+				macidx="$(($macidx - 1))"
+				;;
+		esac
 	}
 
 	json_add_object data
@@ -462,7 +507,7 @@ mac80211_prepare_vif() {
 	# It is far easier to delete and create the desired interface
 	case "$mode" in
 		adhoc)
-			iw phy "$phy" interface add "$ifname" type adhoc
+			mac80211_iw_interface_add "$phy" "$ifname" adhoc || return
 		;;
 		ap|wds-ap)
 			# Hostapd will handle recreating the interface and
@@ -475,20 +520,20 @@ mac80211_prepare_vif() {
 			mac80211_hostapd_setup_bss "$phy" "$ifname" "$macaddr" "$type" || return
 
 			[ -n "$hostapd_ctrl" ] || {
-				[ -n "$reloadcmd" ] || iw phy "$phy" interface add "$ifname" type __ap
+				mac80211_iw_interface_add "$phy" "$ifname" __ap || return
 				hostapd_ctrl="${hostapd_ctrl:-/var/run/hostapd/$ifname}"
 			}
 		;;
 		mesh)
-			iw phy "$phy" interface add "$ifname" type mp
+			mac80211_iw_interface_add "$phy" "$ifname" mp
 		;;
 		monitor)
-			iw phy "$phy" interface add "$ifname" type monitor
+			mac80211_iw_interface_add "$phy" "$ifname" monitor
 		;;
 		sta|wds-sta)
 			local wdsflag=
 			[ "$wds" -gt 0 ] && wdsflag="4addr on"
-			iw phy "$phy" interface add "$ifname" type managed $wdsflag
+			mac80211_iw_interface_add "$phy" "$ifname" managed $wdsflag
 			[ "$powersave" -gt 0 ] && powersave="on" || powersave="off"
 			iw "$ifname" set power_save "$powersave"
 			# sta not support brctl
@@ -507,7 +552,7 @@ mac80211_prepare_vif() {
 		# All interfaces must have unique mac addresses
 		# which can either be explicitly set in the device
 		# section, or automatically generated
-		ifconfig "$ifname" hw ether "$macaddr"
+		ifconfig "$ifname" down hw ether "$macaddr"
 	fi
 
 	json_select ..
@@ -773,57 +818,13 @@ EOF
 	return 0
 }
 
-drv_mac80211_reload() {
-	json_select config
-	json_get_vars \
-		phy macaddr path \
-		country chanbw distance \
-		txpower antenna_gain \
-		rxantenna txantenna \
-		frag rts beacon_int htmode
-	json_get_values basic_rate_list basic_rate
-	json_select ..
-
-	find_phy || {
-		echo "Could not find PHY for phy '$1'"
-		wireless_set_retry 0
-		return 1
-	}
-
-	# convert channel to frequency
-	[ "$auto_channel" -gt 0 ] || freq="$(get_freq "$phy" "$channel")"
-
-	hostapd_conf_file="/var/run/hostapd-$phy.conf"
-
-	no_ap=1
-	macidx=0
-	staidx=0
-	reloadcmd=1
-	has_ap=
-
-	hostapd_ctrl=
-	for_each_interface "ap wds-ap" mac80211_check_ap
-
-	rm -f "$hostapd_conf_file"
-	[ -n "$has_ap"  ] && mac80211_hostapd_setup_base "$phy"
-
-	for_each_interface "ap wds-ap" mac80211_prepare_vif
-
-	[ -n "$hostapd_ctrl" ] && {
-		hostapd_cli -i $wiface renew
-	}
-
-	reloadcmd=
-
-}
-
 drv_mac80211_repup() {
 	json_select config
 	json_get_vars \
 		phy macaddr path
 	json_select ..
 
-	# reppeater get macaddr from phy, so we need get phy first.
+	# get macaddr from phy, so we need get phy first.
 	find_phy || {
 		echo "Could not find PHY for device '$1'"
 		wireless_set_retry_wpas 0
@@ -835,12 +836,8 @@ drv_mac80211_repup() {
 
 	#local ifname
 	# set macidx = 1 to avoid get the same macaddr with ap.
-	macidx=1
-
-	#hostapd_ctrl=
-
+	macidx=0
 	#[ -n "$ifname"  ] || ifname="rai${phy#phy}"
-	#[ -n "$hostapd_ctrl"   ] || hostapd_ctrl="${hostapd_ctrl:-/var/run/hostapd/$ifname}"
 
 	for_each_interface "sta adhoc mesh monitor wds-sta" mac80211_prepare_vif
 	for_each_interface "sta adhoc mesh monitor wds-sta" mac80211_setup_vif
@@ -892,6 +889,8 @@ drv_mac80211_setup() {
 	no_ap=1
 	macidx=0
 	staidx=0
+
+	mac802111_get_apmacidx $phy
 
 	[ -n "$chanbw" ] && {
 		for file in /sys/kernel/debug/ieee80211/$phy/ath9k/chanbw /sys/kernel/debug/ieee80211/$phy/ath5k/bwmode; do
@@ -950,7 +949,7 @@ drv_mac80211_teardown() {
 	json_get_vars phy
 	json_select ..
 
-	mac80211_interface_cleanup "$phy" hostap
+	mac80211_interface_cleanup "$phy" "hostap"
 }
 
 add_driver mac80211
