@@ -1,5 +1,7 @@
 #!/bin/ash
 #echo "~$1~$2~$3~" > /dev/ttyS0
+. /usr/share/led-button/wps_func.sh
+
 wds_if="$1"
 path_led="/sys/class/leds/siwifi-"
 wps_enabled=0
@@ -24,17 +26,6 @@ check_wps() {
 	[ -f /tmp/wps_status ] && {
 		wps_status=`cat /tmp/wps_status`
 	}
-}
-
-uci_delete_station() {
-	local name
-	local cnt=0
-	until [ "$name" = "$1" -o $cnt -gt 8  ]
-	do
-		let "cnt++"
-		name=`uci get wireless.@wifi-iface[$cnt].ifname`
-	done
-	[ $cnt -gt 8  ] || uci delete wireless.@wifi-iface[$cnt]
 }
 
 prepare_params() {
@@ -104,11 +95,12 @@ if [[ "$wds_if" == "sfi0" || "$wds_if" == "sfi1" ]]; then
 
 	if [ "$2" == "WPS-FAIL"  ]; then
 		echo "~$1~$2~rm wps_status" > /dev/ttyS0
-		uci_delete_station "sfi0"
-		uci_delete_station "sfi1"
+		uci_delete_wireless_iface "sfi0"
+		uci_delete_wireless_iface "sfi1"
 		uci commit wireless
 		output=`wifi reload`
 		[ -f /tmp/wps_status ] && rm /tmp/wps_status
+		echo 1 > /tmp/check_wds
 	fi
 
 	if [ "$2" == "CONNECTED" ]; then
