@@ -33,7 +33,7 @@ if [ "$mode" == 0 ]; then
 	sleep 2
 	cd /var/run/wpa_supplicant
 	for socket in *; do
-		[ -S "$socket"  ] || continue
+		[ -S "$socket" ] || continue
 		wpa_cli -i "$socket" wps_pbc
 	done
 

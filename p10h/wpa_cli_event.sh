@@ -69,14 +69,14 @@ if [[ "$wds_if" == "sfi0" || "$wds_if" == "sfi1" ]]; then
 	prepare_params
 
 	if [ "$2" == "WPS-SUCCESS" ]; then
-		[ "$wps_status" == 0  ] && {
+		[ "$wps_status" == 0 ] && {
 			#echo "$wds_if" > /tmp/wps_status
 			#echo "wps~select~$wds_if~" > /dev/ttyS0
 		}
 		#TODO  LED control should spilt in func.
 	fi
 
-	if [ "$2" == "WPS-FAIL"  ]; then
+	if [ "$2" == "WPS-FAIL" ]; then
 		#echo "~$1~$2~rm wps_status" > /dev/ttyS0
 		uci_delete_wireless_iface "sfi0"
 		uci_delete_wireless_iface "sfi1"
@@ -86,8 +86,8 @@ if [[ "$wds_if" == "sfi0" || "$wds_if" == "sfi1" ]]; then
 	fi
 
 	if [ "$2" == "CONNECTED" ]; then
-		if [ "$wps_status" != 0  ]; then
-			if [ "$wds_if" != "$wps_status"  ]; then
+		if [ "$wps_status" != 0 ]; then
+			if [ "$wds_if" != "$wps_status" ]; then
 				#echo "wps $wps_status now $wds_if so exit 0" > /dev/ttyS0
 				exit 0
 			fi
@@ -122,7 +122,7 @@ if [[ "$wds_if" == "sfi0" || "$wds_if" == "sfi1" ]]; then
 	fi
 
 	if [ "$2" == "DISCONNECTED" ]; then
-		[ "$wps_status" != 0  ] && exit 0
+		[ "$wps_status" != 0 ] && exit 0
 		#echo "wpa_cli_evt: disconnected" > /dev/ttyS0
 		local busy=`cat /tmp/wds_sta_status`
 		while [ "$busy" == "b" ]

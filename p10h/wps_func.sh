@@ -39,13 +39,13 @@ EOF
 uci_delete_wireless_iface() {
 	local name
 	local cnt=0
-	until [ "$name" = "$1" -o $cnt -gt 9 ]
+	until [ "$name" = "$1" -o "$cnt" -gt 9 ]
 	do
 		name=`uci -q get wireless.@wifi-iface[$cnt].ifname`
 		let "cnt++"
 	done
 	let "cnt--"
-	[ $cnt -gt 8  ] || uci -q delete wireless.@wifi-iface[$cnt]
+	[ "$cnt" -gt 8 ] || uci -q delete wireless.@wifi-iface[$cnt]
 }
 
 #uci set network wwan and stabridge.
@@ -67,7 +67,7 @@ uci_set_wireless_iface() {
 	local ssid=$2
 	local enc=$3
 	local psk=$4
-	until [ "$name" = "$1" -o $cnt -gt 9 ]
+	until [ "$name" = "$1" -o "$cnt" -gt 9 ]
 	do
 		name=`uci -q get wireless.@wifi-iface[$cnt].ifname`
 		let "cnt++"
@@ -94,7 +94,7 @@ set_channel() {
 	esac
 	[ "$chan" -gt 0 ] && {
 		uci set wireless.radio${num}.channel="$chan"
-		if [ $num = 1 ]; then
+		if [ "$num" = 1 ]; then
 			uci set wireless.radio1.htmode="VHT80"
 			[ "$chan" = "165" ] && uci set wireless.radio1.htmode="VHT20"
 		fi

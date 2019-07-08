@@ -8,7 +8,7 @@ cnt=0
 
 #error_exit shall clean sfi, flags, firewall and network.
 error_exit() {
-	[ -f /tmp/wps_status  ] && rm /tmp/wps_status
+	[ -f /tmp/wps_status ] && rm /tmp/wps_status
 	uci_delete_wireless_iface "sfi0"
 	uci_delete_wireless_iface "sfi1"
 	uci commit
@@ -23,7 +23,7 @@ prepare_config() {
 	local check_time=0
 	local n1="false"
 	local data
-	while [ -n $n1 -a $check_time -lt 30  ]
+	while [ -n "$n1" -a "$check_time" -lt 30 ]
 	do
 		data=`iwinfo $wds_if info`
 		chan=`echo "$data" | grep Chan|awk -F ' ' '{print $4}'`
@@ -33,7 +33,7 @@ prepare_config() {
 		let "check_time ++"
 	done
 
-	[ $check_time -lt 30 ] || error_exit
+	[ "$check_time" -lt 30 ] || error_exit
 
 	#TODO maybe we can use jshn to parse the conf and then we can get these params easily.
 	data=`cat  /var/run/wpa_supplicant-$wds_if.conf`
@@ -83,7 +83,7 @@ set_wds() {
 	uci -q set network.wan.disabled='1'
 	uci -q set dhcp.lan.ignore='1'
 
-	uci_set_network $wds_if
+	uci_set_network "$wds_if"
 
 	uci commit
 	output=`/etc/init.d/relayd enable`
