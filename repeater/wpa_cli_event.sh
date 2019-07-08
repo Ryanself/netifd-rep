@@ -28,33 +28,12 @@ check_wps(){
 prepare_params() {
 	case "$wds_if" in
 		sfi0)
-			radio_num=0
 			band=24g
 			;;
 		sfi1)
-			radio_num=1
 			band=5g
 			;;
 	esac
-}
-
-set_channel() {
-	#get_channel
-	chan=`iwinfo $wds_if info | grep Chan|awk -F ' ' '{print $4}'`
-
-	[ "$chan" -gt 0  ] && {
-		uci set wireless.radio${radio_num}.channel="$chan"
-		# set sfix which is not in use disabled = 1,and set 5g htmode
-		if [ $radio_num = 1 ]; then
-			uci set wireless.@wifi-iface[2].disabled='1'
-			uci set wireless.radio1.htmode="VHT80"
-			[ "$chan" = "165"  ] && uci set wireless.radio1.htmode="VHT20"
-		else
-			uci set wireless.@wifi-iface[3].disabled='1'
-		fi
-		uci commit wireless
-		output=`wifi reload`
-	}
 }
 
 set_uhttpd() {
@@ -120,7 +99,7 @@ if [[ "$wds_if" == "sfi0" || "$wds_if" == "sfi1" ]]; then
 		# sta_status use to judge whether rep has been configured, 0 mean has been configured
 		[ "$sta_status" = "0"  ] && {
 			/etc/init.d/dnsmasq restart
-			set_channel
+			set_channel "$wds_if"
 			set_uhttpd "index"
 		}
 

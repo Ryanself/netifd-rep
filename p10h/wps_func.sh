@@ -13,7 +13,7 @@ uci_add_station() {
 		# if station is already exist, just return.
 		[ "$name" = "$1" ] && return
 		let "cnt++"
-		uci -q get wireless.@wifi-iface[$cnt]
+		uci -q get wireless.@wifi-iface[$cnt] > /dev/null
 	done
 
 	case "$1" in
@@ -25,8 +25,8 @@ uci_add_station() {
 			;;
 	esac
 
+	uci add wireless wifi-iface > /dev/null
 	uci -q batch << EOF
-add wireless wifi-iface
 set wireless.@wifi-iface[$cnt].device='$device'
 set wireless.@wifi-iface[$cnt].network='wwan'
 set wireless.@wifi-iface[$cnt].ssid='errorssid'
@@ -48,7 +48,6 @@ uci_delete_wireless_iface() {
 	[ $cnt -gt 8  ] || uci -q delete wireless.@wifi-iface[$cnt]
 }
 
-#FIXME add or set and what if it already exist?
 #uci set network wwan and stabridge.
 uci_set_network() {
 	uci -q batch <<EOF
@@ -62,7 +61,7 @@ set network.stabridge.disable_dhcp_parse='1'
 EOF
 }
 
-#set wireless base ifname
+#set wireless base ifname, if it does not exist, just not set.
 uci_set_wireless_iface() {
 	local cnt=0
 	local ssid=$2
@@ -81,4 +80,25 @@ set wireless.@wifi-iface[$cnt].encryption="$enc"
 set wireless.@wifi-iface[$cnt].key="$psk"
 EOF
 }
+}
+
+set_channel() {
+	local num=0
+	local chan=`iwinfo "$1" info | grep Chan|awk -F ' ' '{print $4}'`
+	case "$1" in
+		sfi0)
+			num=0
+			;;
+		sfi1)
+			num=1
+	esac
+	[ "$chan" -gt 0 ] && {
+		uci set wireless.radio${num}.channel="$chan"
+		if [ $num = 1 ]; then
+			uci set wireless.radio1.htmode="VHT80"
+			[ "$chan" = "165" ] && uci set wireless.radio1.htmode="VHT20"
+		fi
+		uci commit wireless
+		output=`wifi reload`
+	}
 }

@@ -1,12 +1,12 @@
 #!/bin/sh
-
 . /usr/share/led-button/wps_func.sh
-echo "~$wds_if~$band~ wps setting" > /dev/ttyS0
+
+#echo "~$wds_if~$band~ wps setting" > /dev/ttyS0
 wds_if=$1
 band=$2
 cnt=0
 
-#FIXME error_exit shall clean sfi, flags, firewall and network.
+#error_exit shall clean sfi, flags, firewall and network.
 error_exit() {
 	[ -f /tmp/wps_status  ] && rm /tmp/wps_status
 	uci_delete_wireless_iface "sfi0"
@@ -19,15 +19,16 @@ error_exit() {
 
 #TODO need to recode func prepare_config.
 prepare_config() {
-	echo "~$wds_if~$band~ prepare_config" > /dev/ttyS0
+	#echo "~$wds_if~$band~ prepare_config" > /dev/ttyS0
 	local check_time=0
-	#wps only support 2.4g / sfi0
 	local n1="false"
+	local data
 	while [ -n $n1 -a $check_time -lt 30  ]
 	do
-		chan=`iwinfo $wds_if info | grep Chan|awk -F ' ' '{print $4}'`
-		ssid=`iwinfo $wds_if info | grep ESSID|awk -F '"' '{print $2}'`
-		n1=`echo $chan | sed 's/[0-9]//g'`
+		data=`iwinfo $wds_if info`
+		chan=`echo "$data" | grep Chan|awk -F ' ' '{print $4}'`
+		ssid=`echo "$data" | grep ESSID|awk -F '"' '{print $2}'`
+		n1=`echo "$chan" | sed 's/[0-9]//g'`
 		sleep 1
 		let "check_time ++"
 	done
@@ -35,10 +36,10 @@ prepare_config() {
 	[ $check_time -lt 30 ] || error_exit
 
 	#TODO maybe we can use jshn to parse the conf and then we can get these params easily.
-	#ssid=`iwinfo $wds_if info | grep ESSID|awk -F '"' '{print $2}'`
-	psk=$(cat  /var/run/wpa_supplicant-$wds_if.conf | grep "$ssid" -A5 |grep psk | awk -F '"' '{print $2}')
-	encription=$(cat  /var/run/wpa_supplicant-$wds_if.conf | grep "$ssid" -A5 |grep key_mgmt | awk -F '=' '{print $2}')
-	proto=$(cat  /var/run/wpa_supplicant-$wds_if.conf | grep "$ssid" -A5 |grep proto | awk -F '=' '{print $2}')
+	data=`cat  /var/run/wpa_supplicant-$wds_if.conf`
+	psk=$(echo "$data" | grep "$ssid" -A5 | grep psk | awk -F '"' '{print $2}')
+	encription=$(echo "$data" | grep "$ssid" -A5 | grep key_mgmt | awk -F '=' '{print $2}')
+	proto=$(echo "$data" | grep "$ssid" -A5 | grep proto | awk -F '=' '{print $2}')
 	case "$encription" in
 		NONE)
 			enc="open"
@@ -87,11 +88,10 @@ set_wds() {
 	uci commit
 	output=`/etc/init.d/relayd enable`
 	#wifi reload
-	#rm now  then we donot need to reset led.
+	#rm now then we don't need to reset led.
 	[ -f /tmp/wps_status ] && rm /tmp/wps_status
 	output=`/etc/init.d/network restart`
-	echo 1 > /tmp/check_wds
-	echo "~wps~done~" > /dev/ttyS0
+	#echo "~wps~done~" > /dev/ttyS0
 	exit 0
 }
 

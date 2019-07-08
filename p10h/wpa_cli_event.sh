@@ -6,21 +6,6 @@ wds_if="$1"
 path_led="/sys/class/leds/siwifi-"
 wps_enabled=0
 
-set_channel() {
-	#get channel
-	chan=`iwinfo "$wds_if" info | grep Chan|awk -F ' ' '{print $4}'`
-
-	[ "$chan" -gt 0 ] && {
-		uci set wireless.radio${num}.channel="$chan"
-		if [ $num = 1 ]; then
-			uci set wireless.radio1.htmode="VHT80"
-			[ "$chan" = "165" ] && uci set wireless.radio1.htmode="VHT20"
-		fi
-		uci commit wireless
-		output=`wifi reload`
-	}
-}
-
 check_wps() {
 	wps_status=0
 	[ -f /tmp/wps_status ] && {
@@ -32,12 +17,10 @@ prepare_params() {
 	case $wds_if in
 		sfi0)
 			trig=phy0
-			num=0
 			band=24g
 			;;
 		sfi1)
 			trig=phy1
-			num=1
 			band=5g
 			;;
 	esac
@@ -86,21 +69,20 @@ if [[ "$wds_if" == "sfi0" || "$wds_if" == "sfi1" ]]; then
 	prepare_params
 
 	if [ "$2" == "WPS-SUCCESS" ]; then
-		[ "$wps_status" = 0  ] && {
-			echo "$wds_if" > /tmp/wps_status
+		[ "$wps_status" == 0  ] && {
+			#echo "$wds_if" > /tmp/wps_status
 			#echo "wps~select~$wds_if~" > /dev/ttyS0
 		}
 		#TODO  LED control should spilt in func.
 	fi
 
 	if [ "$2" == "WPS-FAIL"  ]; then
-		echo "~$1~$2~rm wps_status" > /dev/ttyS0
+		#echo "~$1~$2~rm wps_status" > /dev/ttyS0
 		uci_delete_wireless_iface "sfi0"
 		uci_delete_wireless_iface "sfi1"
 		uci commit wireless
 		output=`wifi reload`
 		[ -f /tmp/wps_status ] && rm /tmp/wps_status
-		echo 1 > /tmp/check_wds
 	fi
 
 	if [ "$2" == "CONNECTED" ]; then
@@ -128,7 +110,7 @@ if [[ "$wds_if" == "sfi0" || "$wds_if" == "sfi1" ]]; then
 		output=`/etc/init.d/dnsmasq reload`
 
 		local sta_status=`uci get network.stabridge`
-		[ "$sta_status" = "interface" ] && set_channel
+		[ "$sta_status" = "interface" ] && set_channel "$wds_if"
 
 		if [ -d "$path_led""$trig""::tx" ]; then
 			echo "$trig""tx" > "$path_led""$trig""::tx"/trigger

@@ -10,9 +10,10 @@ connection_check()
 	local n1="false"
 	while [ -n $n1 -a $check_time -lt 60  ]
 	do
-		chan=`iwinfo $wds_if info | grep Chan|awk -F ' ' '{print $4}'`
-		ssid=`iwinfo $wds_if info | grep ESSID|awk -F '"' '{print $2}'`
-		n1=`echo $chan|sed 's/[0-9]//g'`
+		data=`iwinfo $wds_if info`
+		chan=`echo "$data" | grep Chan|awk -F ' ' '{print $4}'`
+		ssid=`echo "$data" | grep ESSID|awk -F '"' '{print $2}'`
+		n1=`echo $chan |sed 's/[0-9]//g'`
 		sleep 1
 		let "check_time ++"
 	done
@@ -25,9 +26,10 @@ connection_check()
 
 prepare_config()
 {
-	psk=$(cat  /var/run/wpa_supplicant-$wds_if.conf | grep "$ssid" -A5 |grep psk | awk -F '"' '{print $2}')
-	encription=$(cat  /var/run/wpa_supplicant-$wds_if.conf | grep "$ssid" -A5 |grep key_mgmt | awk -F '=' '{print $2}')
-	proto=$(cat  /var/run/wpa_supplicant-$wds_if.conf | grep "$ssid" -A5 |grep proto | awk -F '=' '{print $2}')
+	local data=`cat /var/run/wpa_supplicant-$wds_if.conf`
+	psk=$(echo "$data" | grep "$ssid" -A5 | grep psk | awk -F '"' '{print $2}')
+	encription=$(echo "$data" | grep "$ssid" -A5 | grep key_mgmt | awk -F '=' '{print $2}')
+	proto=$(echo "$data" | grep "$ssid" -A5 | grep proto | awk -F '=' '{print $2}')
 	case $encription in
 		NONE)
 			enc="open"
