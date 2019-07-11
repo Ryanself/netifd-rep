@@ -1,7 +1,7 @@
 #!/bin/sh
 
 
-#$1 ifname
+# @$1 ifname @$2 network
 uci_add_station() {
 	local device
 	local name
@@ -11,7 +11,10 @@ uci_add_station() {
 	do
 		name=`uci -q get wireless.@wifi-iface[$cnt].ifname`
 		# if station is already exist, just return.
-		[ "$name" = "$1" ] && return
+		[ "$name" = "$1" ] && {
+			uci -q set wireless.@wifi-iface[$cnt].disabled='0'
+			return
+		}
 		let "cnt++"
 		uci -q get wireless.@wifi-iface[$cnt] > /dev/null
 	done
@@ -26,11 +29,12 @@ uci_add_station() {
 	esac
 
 	uci add wireless wifi-iface > /dev/null
+	# repeater has different network wwan wwwan.
 	uci -q batch << EOF
-set wireless.@wifi-iface[$cnt].device='$device'
-set wireless.@wifi-iface[$cnt].network='wwan'
+set wireless.@wifi-iface[$cnt].device="$device"
+set wireless.@wifi-iface[$cnt].network="$2"
 set wireless.@wifi-iface[$cnt].ssid='errorssid'
-set wireless.@wifi-iface[$cnt].ifname='$1'
+set wireless.@wifi-iface[$cnt].ifname="$1"
 set wireless.@wifi-iface[$cnt].mode='sta'
 set wireless.@wifi-iface[$cnt].disabled='0'
 EOF
@@ -49,15 +53,24 @@ uci_delete_wireless_iface() {
 }
 
 #uci set network wwan and stabridge.
+#FIXME disable_dhcp_parse WHAT TO DO WITH IT? AND SHALL WE SUPPORT REPEATER?
 uci_set_network() {
 	uci -q batch <<EOF
 set network.wwan=interface
-set network.wwan.ifname='$1'
+set network.wwan.ifname="$1"
 set network.wwan.proto='dhcp'
 set network.stabridge=interface
 set network.stabridge.proto='relay'
 set network.stabridge.network='lan wwan'
 set network.stabridge.disable_dhcp_parse='1'
+EOF
+}
+
+#wds fail or rewds.
+uci_delete_network() {
+	uci -q batch <<EOF
+delete network.wwan
+delete network.stabridge
 EOF
 }
 
@@ -91,6 +104,7 @@ set_channel() {
 			;;
 		sfi1)
 			num=1
+			;;
 	esac
 	[ "$chan" -gt 0 ] && {
 		uci set wireless.radio${num}.channel="$chan"

@@ -15,35 +15,48 @@ check_status() {
 	}
 }
 
-wps_start() {
-	#add sta iface conf file in wireless to up sif*.
-	uci_add_station "sfi0"
-	uci_add_station "sfi1"
-}
+#repeater network use different config.
+local_network="wwan"
+mode=`uci -q get basic_setting.dev_mode.mode`
+#@mode means wds(rep), ap(wps). default: ap.
+case $mode in
+	ap)
+		directory="hostapd"
+		mode="hostapd_cli"
+		;;
+	wds|rep)
+		directory="wpa_supplicant"
+		if [ "$mode" = "rep" ]; then
+			local_network="wwwan"
+		else
+			# if wds has config of network wwan, it will
+			# cause error when sfi0 sfi1 are added.
+			#FIXME shall we delete station here?
+			uci_delete_network
+			uci commit
+			output=`wifi reload`
+		fi
+		mode="wpa_cli"
+		check_status
+		echo 1 > /tmp/wps_start
+		uci_add_station "sfi0" "wwan"
+		uci_add_station "sfi1" "$local_network"
+		uci commit
+		output=`wifi reload`
 
-mode=`uci -q get basic_setting.ap.enable`
-#enable 0 means wds(repeater), 1 means ap(wps). default: ap.
-if [ "$mode" == 0 ]; then
-	check_status
-	echo 1 > /tmp/wps_start
-	wps_start
-	uci commit
-	output=`wifi reload`
+		sleep 2
+		;;
+	*)
+		exit 0
+		;;
+esac
 
-	sleep 2
-	cd /var/run/wpa_supplicant
-	for socket in *; do
-		[ -S "$socket" ] || continue
-		wpa_cli -i "$socket" wps_pbc
-	done
+cd /var/run/$directory
+for socket in *; do
+	[ -S "$socket" ] || continue
+	"$mode" -i "$socket" wps_pbc
+done
 
-	#wps_start  shall rm here.
-	[ -f /tmp/wps_start ] && rm /tmp/wps_start
-	exit 0
-else
-	cd /var/run/wpa_supplicant
-	for socket in *; do
-		[ -S "$socket" ] || continue
-		wpa_cli -i "$socket" wps_pbc
-	done
-fi
+#rm wps button event flag.
+[ -f /tmp/wps_start ] && rm /tmp/wps_start
+exit 0

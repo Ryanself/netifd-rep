@@ -13,7 +13,6 @@ error_exit() {
 	uci_delete_wireless_iface "sfi1"
 	uci commit
 	output=`wifi reload`
-	echo 1 > /tmp/check_wds
 	exit 1
 }
 
@@ -37,9 +36,9 @@ prepare_config() {
 
 	#TODO maybe we can use jshn to parse the conf and then we can get these params easily.
 	data=`cat  /var/run/wpa_supplicant-$wds_if.conf`
-	psk=$(echo "$data" | grep "$ssid" -A5 | grep psk | awk -F '"' '{print $2}')
-	encription=$(echo "$data" | grep "$ssid" -A5 | grep key_mgmt | awk -F '=' '{print $2}')
-	proto=$(echo "$data" | grep "$ssid" -A5 | grep proto | awk -F '=' '{print $2}')
+	psk=$(echo "$data" | grep "$ssid" -A5 | grep psk | tail -1 | awk -F '"' '{print $2}')
+	encription=$(echo "$data" | grep "$ssid" -A5 | grep key_mgmt | tail -1 | awk -F '=' '{print $2}')
+	proto=$(echo "$data" | grep "$ssid" -A5 | grep proto | tail -1 | awk -F '=' '{print $2}')
 	case "$encription" in
 		NONE)
 			enc="open"

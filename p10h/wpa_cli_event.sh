@@ -80,6 +80,8 @@ if [[ "$wds_if" == "sfi0" || "$wds_if" == "sfi1" ]]; then
 		#echo "~$1~$2~rm wps_status" > /dev/ttyS0
 		uci_delete_wireless_iface "sfi0"
 		uci_delete_wireless_iface "sfi1"
+		# acturally we do not need delete network here, just in case.
+		uci_delete_network
 		uci commit wireless
 		output=`wifi reload`
 		[ -f /tmp/wps_status ] && rm /tmp/wps_status

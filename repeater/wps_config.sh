@@ -27,9 +27,9 @@ connection_check()
 prepare_config()
 {
 	local data=`cat /var/run/wpa_supplicant-$wds_if.conf`
-	psk=$(echo "$data" | grep "$ssid" -A5 | grep psk | awk -F '"' '{print $2}')
-	encription=$(echo "$data" | grep "$ssid" -A5 | grep key_mgmt | awk -F '=' '{print $2}')
-	proto=$(echo "$data" | grep "$ssid" -A5 | grep proto | awk -F '=' '{print $2}')
+	psk=$(echo "$data" | grep "$ssid" -A5 | grep psk|tail -1 | awk -F '"' '{print $2}')
+	encription=$(echo "$data" | grep "$ssid" -A5 | grep key_mgmt|tail -1 | awk -F '=' '{print $2}')
+	proto=$(echo "$data" | grep "$ssid" -A5 | grep proto |tail -1| awk -F '=' '{print $2}')
 	case $encription in
 		NONE)
 			enc="open"
@@ -43,6 +43,7 @@ prepare_config()
 			;;
 	esac
 	# freq : dualband one ssid.
+	#FIXME should recode here.
 	config={\"sfi_num\":\"$wds_if\",\"ssid\":\"$ssid\",\"encryption\":\"$enc\",\"key\":\"$psk\",\"bssid\":\"\"}
 	last_config={\"freq\":\"1\",\"band\":\"$band\",\"channel\":\"$chan\",\"ssid_24g\":\"${ssid}\",\
 \"encryption_24g\":\"$enc\",\"key_24g\":\"$psk\",\"ssid_5g\":\"${ssid}\",\"encryption_5g\":\"$enc\",\"key_5g\":\"$psk\"}
